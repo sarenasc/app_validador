@@ -293,6 +293,34 @@ def buscar_en_texto(campo, tipo, esperado, texto, alias=None):
     return None
 
 
+# Dígitos que el OCR confunde por la forma (letra gruesa o borrosa): 5/6, 6/8, 8/9, 8/0, 3/8, 1/7
+_DIGITOS_CONFUSOS = {frozenset(p) for p in ("56", "68", "89", "80", "38", "17")}
+
+
+def lectura_incompleta(tipo, leido, esperado):
+    """True si lo leído parece una mala lectura del valor esperado (no una etiqueta con otro dato).
+
+    Se usa para marcar 'dudoso' en vez de 'error': texto cortado ("PICHIDE" por "PICHIDEGUA") o con 1-2 letras
+    distintas, y números del mismo largo que difieren en UN dígito de forma parecida ("156440" por "155440").
+    Un dígito distinto sin parecido (ej. lote 48 por 47) sigue siendo error.
+    """
+    if tipo in ("texto", "codigo"):
+        a, b = norm_texto(leido), norm_texto(esperado)
+        if len(a) >= 4 and a in b:
+            return True
+        return len(b) >= 6 and _distancia(a, b) <= 2
+    if tipo == "num":
+        a, b = norm_num(leido), norm_num(esperado)
+        if len(a) != len(b) or len(a) < 4:
+            return False
+        dif = [(x, y) for x, y in zip(a, b) if x != y]
+        return len(dif) == 1 and frozenset(dif[0]) in _DIGITOS_CONFUSOS
+    if tipo == "peso":  # peso leído a medias ("2" de "12.12"): no es un peso distinto, es una mala lectura
+        a, b = re.sub(r"\D", "", str(leido)), re.sub(r"\D", "", str(esperado))
+        return bool(a) and a in b
+    return False
+
+
 def validar(leido, proceso=None, obtener=db.obtener, texto=None, listar=db.listar):
     leido = {k: (str(v).strip() if v not in (None, "") else "") for k, v in (leido or {}).items()}
     esp, claves = esperados(proceso, leido, obtener, texto, listar)
@@ -331,6 +359,8 @@ def validar(leido, proceso=None, obtener=db.obtener, texto=None, listar=db.lista
                 fila["estado"], fila["nota"] = "ok", "encontrado en el texto leído"
             elif en_texto == "parecido":
                 fila["estado"], fila["nota"] = "dudoso", "se lee parecido pero no igual: revisa la etiqueta"
+            elif valor and lectura_incompleta(tipo, valor, esperado):
+                fila["estado"], fila["nota"] = "dudoso", "lectura incompleta o confusa del OCR: revisa la etiqueta"
             else:
                 fila["estado"] = "error" if valor else "no_leido"
         filas.append(fila)

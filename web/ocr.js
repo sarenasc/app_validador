@@ -151,13 +151,15 @@ const OCR = (() => {
     return { x: X0 / esc, y: Y0 / esc, w: (X1 - X0) / esc, h: (Y1 - Y0) / esc };
   }
 
-  /** Recorta la etiqueta, la amplía (lado mayor ~2400 px), pasa a gris y estira el contraste. Devuelve un canvas. */
-  function preprocesar(archivo) {
+  /** Recorta la etiqueta, la deja en `ancho` px, pasa a gris y estira el contraste. Devuelve un canvas.
+   * Probado con fotos reales: a ~1600 px se leen mejor los números en negrita (CSG) y a ~2400 px la letra chica
+   * (comunas, CoC); por eso se lee en los dos tamaños. */
+  function preprocesar(archivo, ancho = 2400) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
         const r = ubicarEtiqueta(img) || { x: 0, y: 0, w: img.width, h: img.height };
-        const esc = Math.min(2.5, 2400 / Math.max(r.w, r.h));
+        const esc = Math.min(2.5, ancho / r.w);
         const c = document.createElement("canvas");
         c.width = Math.round(r.w * esc); c.height = Math.round(r.h * esc);
         const ctx = c.getContext("2d", { willReadFrequently: true });
@@ -199,11 +201,8 @@ const OCR = (() => {
     return worker;
   }
 
-  const CLAVES = ["csg", "csp", "cse", "ggn", "fda", "coc", "proc", "lote", "sdp", "embalaje", "fecha", "variedad",
-    "especie", "exportadora", "peso_kg", "peso_lb", "plu", "categoria", "prod_comuna", "planta_comuna"];
-
   /** Blanco y negro adaptativo (umbral local de Bradley): ayuda con sombras y etiquetas arrugadas. */
-  function binarizar(src) {
+  function binarizar(src, k = 0.85) {
     const w = src.width, h = src.height;
     const c = document.createElement("canvas"); c.width = w; c.height = h;
     const ctx = c.getContext("2d", { willReadFrequently: true });
@@ -220,7 +219,7 @@ const OCR = (() => {
       for (let x = 0; x < w; x++) {
         const xa = Math.max(0, x - r), xb = Math.min(w, x + r + 1);
         const s = integ[yb * W + xb] - integ[ya * W + xb] - integ[yb * W + xa] + integ[ya * W + xa];
-        const i = (y * w + x) * 4, v = p[i] * (xb - xa) * (yb - ya) < s * 0.85 ? 0 : 255;
+        const i = (y * w + x) * 4, v = p[i] * (xb - xa) * (yb - ya) < s * k ? 0 : 255;
         p[i] = p[i + 1] = p[i + 2] = v;
       }
     }
@@ -241,25 +240,27 @@ const OCR = (() => {
     return out;
   }
 
-  /** Lee la foto: hasta 3 pasadas (gris por bloques, blanco y negro disperso, gris disperso) y vota los campos. */
+  /**
+   * Lee la foto con 3 pasadas siempre (no se corta antes: que un campo aparezca no significa que esté bien leído):
+   * gris 2400 px por bloques, gris 1600 px por bloques y blanco y negro 2400 px disperso. Los campos se votan y
+   * el texto de las 3 va al servidor, que busca ahí los valores de la base.
+   */
   async function leer(archivo, catalogo, progreso) {
-    const gris = await preprocesar(archivo);
+    const grande = await preprocesar(archivo, 2400), mediana = await preprocesar(archivo, 1600);
     const w = await obtenerWorker(progreso);
-    const pasadas = [["3", false, "1ª lectura"], ["11", true, "2ª lectura (blanco y negro)"], ["11", false, "3ª lectura"]];
+    const pasadas = [[grande, "3", "1ª lectura"], [mediana, "3", "2ª lectura"], [binarizar(grande), "11", "3ª lectura"]];
     const textos = [], lecturas = [];
-    const combinar = () => ({ ...parsear(textos.join("\n"), catalogo), ...votar(lecturas) });
-    for (const [psm, bn, nombre] of pasadas) {
-      if (lecturas.length && CLAVES.every((k) => combinar()[k])) break;
-      progreso && progreso(`${nombre}…`, 0);
+    for (const [img, psm, nombre] of pasadas) {
+      progreso && progreso(`${nombre} de 3…`, 0);
       await w.setParameters({ tessedit_pageseg_mode: psm });
-      const { data } = await w.recognize(bn ? binarizar(gris) : gris, { rotateAuto: true });
+      const { data } = await w.recognize(img, { rotateAuto: true });
       textos.push(`----- ${nombre} -----\n${data.text}`);
       lecturas.push(parsear(data.text, catalogo));
     }
-    return { campos: combinar(), texto: textos.join("\n") };
+    return { campos: { ...parsear(textos.join("\n"), catalogo), ...votar(lecturas) }, texto: textos.join("\n") };
   }
 
-  return { leer, parsear, votar, fixNum, setFormatoFecha: (f) => { formatoFecha = f; try { localStorage.setItem("formatoFecha", f); } catch (e) { /* */ } }, getFormatoFecha: () => formatoFecha };
+  return { leer, parsear, votar, preprocesar, binarizar, obtenerWorker, fixNum, setFormatoFecha: (f) => { formatoFecha = f; try { localStorage.setItem("formatoFecha", f); } catch (e) { /* */ } }, getFormatoFecha: () => formatoFecha };
 })();
 
 if (typeof module !== "undefined") module.exports = OCR;

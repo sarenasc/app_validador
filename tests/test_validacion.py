@@ -126,6 +126,17 @@ def test_busca_valores_de_la_base_en_el_texto():
     assert p and p["lote"] == "47"
 
 
+def test_lectura_cortada_o_confusa_es_dudosa_no_error():
+    r = validar({**LEIDO_OK, "prod_comuna": "PICHIDE", "csg": "156440"}, proceso())
+    est = {f["campo"]: f["estado"] for f in r["filas"]}
+    assert est["prod_comuna"] == "dudoso" and est["csg"] == "dudoso"
+    assert r["estado"] == "revisar"
+    # un dígito distinto sin parecido de forma sigue siendo error
+    r = validar({**LEIDO_OK, "lote": "48", "sdp": "50742"}, proceso())
+    est = {f["campo"]: f["estado"] for f in r["filas"]}
+    assert est["lote"] == "error" and est["sdp"] == "error"
+
+
 def test_tolerancias_ocr():
     assert norm_num("I55440") == "155440"
     assert comparar("num", "15544O", "155440")[0]
