@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#14532d">
+  <title>Validador de Etiquetas</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>Validador de Etiquetas</h1>
+  <nav id="tabs">
+    <button data-tab="validar" class="activo">✔ Validar</button>
+    <button data-tab="registrar">✎ Registrar</button>
+    <button data-tab="procesos">Procesos</button>
+    <button data-tab="maestros">Maestros</button>
+    <button data-tab="historial">Historial</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ VALIDAR ============ -->
+  <section id="tab-validar" class="tab activo">
+    <div class="tarjeta">
+      <label class="campo-sel">Comparar con
+        <select id="v-proceso"></select>
+      </label>
+      <div class="botones-foto">
+        <label class="btn grande primario">📷 Tomar foto
+          <input type="file" accept="image/*" capture="environment" id="v-foto" hidden>
+        </label>
+        <label class="btn grande">🖼 Galería
+          <input type="file" accept="image/*" id="v-galeria" hidden>
+        </label>
+      </div>
+      <p class="ayuda">Encuadra solo la etiqueta, derecha, con buena luz y sin reflejos. También puedes escribir los datos abajo y presionar <b>Validar</b>.</p>
+      <div id="v-progreso" class="progreso" hidden><div></div><span></span></div>
+      <img id="v-preview" class="preview" alt="" hidden>
+    </div>
+
+    <div id="v-resultado"></div>
+
+    <form id="v-form" class="formulario" autocomplete="off"></form>
+    <div class="acciones fijas">
+      <button class="btn" id="v-limpiar" type="button">Limpiar</button>
+      <button class="btn primario" id="v-validar" type="button">Validar</button>
+    </div>
+    <details class="tarjeta"><summary>Texto leído por OCR</summary><pre id="v-texto"></pre></details>
+  </section>
+
+  <!-- ============ REGISTRAR ============ -->
+  <section id="tab-registrar" class="tab">
+    <div class="tarjeta">
+      <p class="ayuda" id="r-modo">Nuevo proceso: saca una foto de una etiqueta correcta para precargar los datos, o ingrésalos a mano.</p>
+      <div class="botones-foto">
+        <label class="btn grande primario">📷 Foto para precargar
+          <input type="file" accept="image/*" capture="environment" id="r-foto" hidden>
+        </label>
+        <label class="btn grande">🖼 Galería
+          <input type="file" accept="image/*" id="r-galeria" hidden>
+        </label>
+      </div>
+      <label class="campo-sel">Copiar datos desde un proceso
+        <select id="r-copiar"><option value="">—</option></select>
+      </label>
+      <div id="r-progreso" class="progreso" hidden><div></div><span></span></div>
+      <img id="r-preview" class="preview" alt="" hidden>
+    </div>
+    <div id="r-mensaje"></div>
+    <form id="r-form" class="formulario" autocomplete="off"></form>
+    <div class="acciones fijas">
+      <button class="btn" id="r-nuevo" type="button">Nuevo</button>
+      <button class="btn primario" id="r-guardar" type="button">Guardar proceso</button>
+    </div>
+  </section>
+
+  <!-- ============ PROCESOS ============ -->
+  <section id="tab-procesos" class="tab">
+    <div class="tarjeta">
+      <label><input type="checkbox" id="p-activos" checked> Solo activos</label>
+      <div class="tabla-scroll"><table id="p-tabla"></table></div>
+    </div>
+  </section>
+
+  <!-- ============ MAESTROS ============ -->
+  <section id="tab-maestros" class="tab">
+    <div class="tarjeta">
+      <label class="campo-sel">Maestro <select id="m-tabla"></select></label>
+      <div class="tabla-scroll"><table id="m-grilla"></table></div>
+      <button class="btn" id="m-agregar" type="button">+ Agregar fila</button>
+    </div>
+    <details class="tarjeta">
+      <summary>Pegar filas desde Excel</summary>
+      <p class="ayuda">Copia las filas en Excel (sin encabezado) con las columnas en este orden: <b id="m-orden"></b></p>
+      <textarea id="m-pegar" rows="6"></textarea>
+      <button class="btn primario" id="m-importar" type="button">Importar</button>
+    </details>
+    <div class="tarjeta">
+      <label class="campo-sel">Formato de la fecha impresa en la etiqueta
+        <select id="cfg-fecha">
+          <option value="MDY">MM/DD/AA (ej. 11/18/26 = 18-nov-2026)</option>
+          <option value="DMY">DD/MM/AA (ej. 18/11/26)</option>
+        </select>
+      </label>
+    </div>
+  </section>
+
+  <!-- ============ HISTORIAL ============ -->
+  <section id="tab-historial" class="tab">
+    <div class="tarjeta">
+      <button class="btn" id="h-recargar" type="button">Recargar</button>
+      <div id="h-lista"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="ocr.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
