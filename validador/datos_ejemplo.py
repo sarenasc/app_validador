@@ -1,4 +1,4 @@
-"""Carga datos de ejemplo (tomados de una etiqueta real de damasco) si la base está vacía."""
+"""Datos de ejemplo (de una etiqueta real de damasco) para los tests. La app parte con la base vacía."""
 
 from . import db
 
@@ -23,7 +23,3 @@ def cargar():
                         "variedad": "AMELIA", "categoria": "CAT 1", "plu": "3302",
                         "observacion": "Ejemplo cargado desde etiqueta"})
 
-
-def cargar_si_vacia():
-    if not db.listar("productor") and not db.listar_procesos():
-        cargar()

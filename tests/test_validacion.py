@@ -14,9 +14,8 @@ LEIDO_OK = {
 
 
 @pytest.fixture(autouse=True)
-def base_temporal(tmp_path, monkeypatch):
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
-    db.crear_tablas()
+def base_temporal(tmp_path):
+    db.usar_sqlite(tmp_path / "test.db")  # los tests usan SQLite; producción usa SQL Server
     datos_ejemplo.cargar()
 
 

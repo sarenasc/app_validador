@@ -1,49 +1,46 @@
 # Validador de Etiquetas
 
-App web (celular, tablet o PC) para cajas de fruta con dos modos:
+App web (celular, tablet o PC) para validar etiquetas de cajas de fruta con una foto:
 
-1. **Registrar**: saca una foto a una etiqueta correcta (o ingresa los datos a mano) y queda guardada como la
-   *etiqueta esperada* del proceso (PROC + LOTE). Los productores, plantas, exportadoras, embalajes, etc. que no
-   existan se crean en los maestros; si algo difiere de un maestro existente, la app avisa y deja actualizarlo.
-2. **Validar**: saca una foto a una etiqueta de la línea. La app valida por bloques, siempre contra la base:
-   - **Productor**: con el CSG impreso busca el productor y revisa región, provincia, comuna, GGN y que el SDP sea suyo.
-   - **Planta**: con el CSP impreso revisa región, provincia, comuna, FDA y CoC.
-   - **Exportadora**: con el CSE impreso revisa el nombre.
-   - **Proceso**: si el proceso está registrado (por PROC/LOTE, o el que más coincide), revisa que la etiqueta
-     corresponda a él (productor, lote, fecha, variedad, embalaje, peso, PLU, categoría). Si no está registrado,
-     no es error: se validan igual los otros bloques.
+- **Registrar**: guarda la etiqueta esperada de un proceso (PROC + LOTE), con foto o a mano; crea los maestros que falten.
+- **Validar**: lee la foto (OCR en el navegador) y valida por bloques contra la base: **Productor** (CSG, región,
+  provincia, comuna, GGN, SDP), **Planta** (CSP, región, provincia, comuna, FDA, CoC), **Exportadora** (CSE, nombre)
+  y **Proceso** (lote, fecha, variedad, embalaje, peso, PLU, categoría). El calibre no se valida. Se pueden juntar
+  2 o 3 fotos de la misma etiqueta. Lo leído parecido pero no igual queda como *dudoso*, nunca como correcto.
 
-   Si el OCR no separa bien un campo, se busca el valor de la base directamente en el texto leído. Lo que se lee
-   parecido pero no igual queda como **dudoso** (revisar), nunca como correcto. El **calibre no se valida**.
-   Cada foto queda guardada en `etiquetas_leidas/AAAA-MM-DD/` (foto, texto OCR y resultado) para revisar lecturas.
+Base de datos: **SQL Server**. Las fotos leídas se guardan en `etiquetas_leidas/AAAA-MM-DD/`.
 
-Se validan: especie, variedad, CSG, región/provincia/comuna y GGN del productor, SDP (debe pertenecer al CSG),
-CSP, región/provincia/comuna, FDA y CoC de la planta, CSE y nombre de la exportadora, embalaje, peso kg/lb y PLU
-(del maestro de embalajes), PROC, lote, fecha de embalaje y categoría.
+## Instalar con Docker (servidor)
 
-## Uso
+```bash
+git clone https://github.com/sarenasc/app_validador.git
+cd app_validador
+docker compose up -d --build
+```
+
+Abrir `http://<IP-del-servidor>:8520`. **La primera vez** la app pide la conexión a SQL Server (servidor, puerto,
+base, usuario y contraseña): crea la base si no existe y todas las tablas, y guarda la conexión en `data/config.json`.
+- SQL Server en el mismo equipo que Docker: usar servidor `host.docker.internal`.
+- En Docker se usa usuario SQL (no autenticación de Windows). El usuario necesita permiso para crear la base
+  (o crear la base antes y darle `db_owner`).
+- Para cambiar la conexión: borrar `data/config.json` y reiniciar (`docker compose restart`).
+- También se puede dar la conexión por variables de entorno (ver `docker-compose.yml`) y saltar el asistente.
+
+Actualizar: `git pull && docker compose up -d --build`.
+
+## Usar sin Docker (Windows)
 
 ```powershell
 pip install -r requirements.txt
 .\iniciar.bat
 ```
 
-`iniciar.bat` ejecuta `python servidor.py --red` y muestra la dirección para abrir desde los celulares de la red
-(ej. `http://192.168.x.x:8520`). Sin `--red` solo funciona en este PC.
-
-- La foto se toma con el botón **Tomar foto** (usa la cámara del equipo; funciona también sin HTTPS).
-- La lectura (OCR, Tesseract.js) se hace en el propio celular. La primera vez descarga el motor (~10 MB) desde
-  internet; después queda en caché.
-- Si un campo no se pudo leer queda en amarillo (**REVISAR**): se escribe a mano y se presiona **Validar**.
-- La fecha impresa se interpreta como MM/DD/AA (11/18/26 = 18-nov-2026); se puede cambiar en **Maestros**.
-- **Maestros**: se editan en pantalla o se pegan filas copiadas desde Excel.
-- **Historial**: registra cada validación con su resultado.
-
-Datos en `data/validador.db` (SQLite). Al iniciar por primera vez se carga un ejemplo (damasco Amelia,
-PROC 16 / LOTE 47).
+Requiere el driver "ODBC Driver 17/18 for SQL Server". Aquí sí se puede usar autenticación de Windows.
 
 ## Pruebas
 
 ```powershell
-python -m pytest -q tests
+pip install -r requirements-dev.txt
+python -m pytest -q tests                                   # con SQLite temporal
+$env:VALIDADOR_TEST_MSSQL = "localhost"; python -m pytest -q tests   # además contra SQL Server real
 ```

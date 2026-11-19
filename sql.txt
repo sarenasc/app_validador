@@ -1,0 +1,5 @@
+servidor: host.docker.internal
+usuario: sa
+clave: Robin@2021
+
+#El servidor de ssql va aestar donde mismo docker

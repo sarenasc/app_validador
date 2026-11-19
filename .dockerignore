@@ -1,0 +1,10 @@
+.git
+.claude
+data
+etiquetas_leidas
+errores
+tests
+__pycache__
+**/__pycache__
+.pytest_cache
+*.bat

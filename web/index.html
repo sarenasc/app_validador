@@ -20,6 +20,32 @@
 </header>
 
 <main>
+  <!-- ============ CONFIGURACIÓN INICIAL (solo la primera vez) ============ -->
+  <section id="config-inicial" hidden>
+    <div class="tarjeta">
+      <h2>Conexión a SQL Server</h2>
+      <p class="ayuda">Es la primera vez que se abre el sistema. Ingresa los datos del servidor SQL Server: se creará
+        la base de datos (si no existe) y todas sus tablas. Esto se hace una sola vez.</p>
+      <div id="cfg-error"></div>
+      <form id="cfg-form" class="grilla" autocomplete="off">
+        <div class="fld"><label for="cfg-servidor">Servidor (IP o nombre, o servidor\instancia)</label>
+          <input id="cfg-servidor" placeholder="192.168.19.10" required></div>
+        <div class="fld"><label for="cfg-puerto">Puerto</label><input id="cfg-puerto" value="1433" inputmode="numeric"></div>
+        <div class="fld"><label for="cfg-base">Base de datos</label><input id="cfg-base" value="validador_etiquetas"></div>
+        <div class="fld"><label><input type="checkbox" id="cfg-windows"> Autenticación de Windows</label>
+          <span class="ayuda">Solo si la app corre en Windows (no en Docker).</span></div>
+        <div class="fld cfg-sql"><label for="cfg-usuario">Usuario SQL</label><input id="cfg-usuario" autocomplete="off"></div>
+        <div class="fld cfg-sql"><label for="cfg-clave">Contraseña</label><input id="cfg-clave" type="password" autocomplete="new-password"></div>
+        <div class="fld"><label><input type="checkbox" id="cfg-cert" checked> Confiar en el certificado del servidor</label></div>
+      </form>
+      <div id="cfg-msg"></div>
+      <div class="botones-foto">
+        <button class="btn grande" id="cfg-probar" type="button">Probar conexión</button>
+        <button class="btn grande primario" id="cfg-guardar" type="button">Crear base y comenzar</button>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ VALIDAR ============ -->
   <section id="tab-validar" class="tab activo">
     <div class="tarjeta">

@@ -1,0 +1,19 @@
+services:
+  validador:
+    build: .
+    container_name: validador-etiquetas
+    ports:
+      - "8520:8520"
+    volumes:
+      - ./data:/app/data                       # config.json con la conexión a SQL Server
+      - ./etiquetas_leidas:/app/etiquetas_leidas
+    extra_hosts:
+      - "host.docker.internal:host-gateway"    # para usar un SQL Server instalado en el mismo servidor
+    restart: unless-stopped
+    # Opcional: definir la conexión aquí y saltar el asistente de la primera vez
+    # environment:
+    #   DB_SERVER: 192.168.19.10
+    #   DB_PORT: "1433"
+    #   DB_NAME: validador_etiquetas
+    #   DB_USER: usuario
+    #   DB_PASSWORD: clave

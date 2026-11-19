@@ -94,3 +94,6 @@ pre { white-space: pre-wrap; font-size: 12px; max-height: 300px; overflow: auto;
 .grupo.ok { border-color: var(--ok); background: var(--ok-bg); } .grupo.ok .ico { color: var(--ok); }
 .grupo.error { border-color: var(--err); background: var(--err-bg); } .grupo.error .ico { color: var(--err); }
 .grupo.revisar { border-color: var(--warn); background: var(--warn-bg); } .grupo.revisar .ico { color: var(--warn); }
+
+[hidden] { display: none !important; }
+#config-inicial h2 { margin: 0 0 6px; font-size: 20px; }

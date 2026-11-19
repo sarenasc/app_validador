@@ -431,7 +431,47 @@ function init() {
   $("#h-recargar").onclick = renderHistorial;
   $("#cfg-fecha").value = OCR.getFormatoFecha();
   $("#cfg-fecha").onchange = (e) => { OCR.setFormatoFecha(e.target.value); toast("Formato de fecha guardado en este dispositivo"); };
-  recargar().catch((e) => toast("No se pudo conectar con el servidor: " + e.message, 6000));
+  arrancar();
+}
+
+// ---------------- configuración inicial (primera vez) ----------------
+function datosConfig() {
+  return { servidor: $("#cfg-servidor").value.trim(), puerto: $("#cfg-puerto").value.trim(),
+    base: $("#cfg-base").value.trim(), windows: $("#cfg-windows").checked, usuario: $("#cfg-usuario").value.trim(),
+    clave: $("#cfg-clave").value, confiar_certificado: $("#cfg-cert").checked };
+}
+
+function mostrarConfiguracion(estado) {
+  document.querySelectorAll(".tab, header nav").forEach((e) => (e.hidden = true));
+  $("#config-inicial").hidden = false;
+  if (estado.error) $("#cfg-error").innerHTML = `<div class="msg err">${esc(estado.error)}</div>`;
+  if (estado.servidor) $("#cfg-servidor").value = estado.servidor;
+  if (estado.base) $("#cfg-base").value = estado.base;
+  const sql = () => document.querySelectorAll(".cfg-sql").forEach((e) => (e.hidden = $("#cfg-windows").checked));
+  $("#cfg-windows").onchange = sql;
+  const msg = (cls, t) => ($("#cfg-msg").innerHTML = `<div class="msg ${cls}">${esc(t)}</div>`);
+  $("#cfg-probar").onclick = async () => {
+    msg("warn", "Probando conexión…");
+    try { const r = await api("/api/config/probar", { method: "POST", body: datosConfig() }); msg(r.ok ? "ok" : "err", r.mensaje); }
+    catch (e) { msg("err", e.message); }
+  };
+  $("#cfg-guardar").onclick = async () => {
+    msg("warn", "Creando base de datos y tablas…");
+    $("#cfg-guardar").disabled = true;
+    try {
+      await api("/api/config", { method: "POST", body: datosConfig() });
+      msg("ok", "Listo. Base y tablas creadas.");
+      setTimeout(() => location.reload(), 800);
+    } catch (e) { msg("err", e.message); $("#cfg-guardar").disabled = false; }
+  };
+}
+
+async function arrancar() {
+  try {
+    const estado = await api("/api/config/estado");
+    if (!estado.configurado) { mostrarConfiguracion(estado); return; }
+    await recargar();
+  } catch (e) { toast("No se pudo conectar con el servidor: " + e.message, 6000); }
 }
 
 init();
