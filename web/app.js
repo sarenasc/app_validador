@@ -25,6 +25,7 @@ const AUTOCOMPLETAR = {
 let maestros = {};
 let procesos = [];
 let editId = null;
+let ultimoTexto = ""; // texto OCR de la última foto: el servidor busca en él los valores de la base
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -163,7 +164,7 @@ async function validar(guardar = true) {
   const leido = getForm("v");
   if (!Object.keys(leido).length) { toast("Saca una foto o ingresa datos"); return; }
   try {
-    const r = await api("/api/validar", { method: "POST", body: { leido, proceso_id: $("#v-proceso").value || null, guardar } });
+    const r = await api("/api/validar", { method: "POST", body: { leido, texto: ultimoTexto, proceso_id: $("#v-proceso").value || null, guardar } });
     mostrarResultado(r);
     return r;
   } catch (e) { toast("Error: " + e.message, 5000); return null; }
@@ -196,38 +197,49 @@ async function guardarEtiquetaLeida(archivo, modo, lectura, resultado) {
   } catch (e) { console.warn("No se guardó la etiqueta leída:", e.message); }
 }
 
+const ICONO_GRUPO = { ok: "✔", error: "✖", revisar: "⚠", sin_proceso: "–", sin_datos: "–" };
+const TEXTO_GRUPO = { ok: "correcto", error: "con errores", revisar: "revisar", sin_proceso: "proceso no registrado", sin_datos: "sin datos" };
+
 function mostrarResultado(r) {
   limpiarMarcas("v");
-  const titulo = { ok: "✔ ETIQUETA CORRECTA", error: `✖ ETIQUETA CON ERRORES (${r.n_errores})`, revisar: "⚠ REVISAR: faltan datos por leer" }[r.estado];
+  const titulo = { ok: "✔ ETIQUETA CORRECTA", error: `✖ ETIQUETA CON ERRORES (${r.n_errores})`, revisar: "⚠ REVISAR: hay datos que no se leyeron bien" }[r.estado];
   const p = r.proceso;
-  const sub = p ? `Comparado con PROC ${esc(p.proc)} · LOTE ${esc(p.lote)} · ${esc(p.variedad || "")}` : "Sin proceso registrado";
+  const sub = p ? `Proceso PROC ${esc(p.proc)} · LOTE ${esc(p.lote)} · ${esc(p.variedad || "")}` : "Proceso no registrado: se validan productor, planta y exportadora";
+  const grupos = Object.values(r.grupos || {}).map((g) => `<div class="grupo ${g.estado}">
+      <span class="ico">${ICONO_GRUPO[g.estado] || ""}</span><b>${esc(g.titulo)}</b>${g.clave ? ` <span class="clave">${esc(g.clave)}</span>` : ""}
+      <small>${TEXTO_GRUPO[g.estado] || ""}</small></div>`).join("");
+  const errGrupo = new Set(Object.values(r.grupos || {}).flatMap((g) => g.mensajes));
   const items = [];
   for (const f of r.filas) {
     if (f.estado === "error") items.push(`<li class="e"><b>${esc(f.titulo)}</b>: dice <b>${esc(f.leido)}</b>, debe decir <b>${esc(f.esperado)}</b></li>`);
   }
-  for (const a of r.avisos) items.push(`<li class="e">${esc(a)}</li>`);
+  for (const a of r.avisos) items.push(`<li class="${errGrupo.has(a) ? "e" : "w"}">${esc(a)}</li>`);
   for (const f of r.filas) {
+    if (f.estado === "dudoso") items.push(`<li class="w"><b>${esc(f.titulo)}</b>: se lee parecido pero no igual a <b>${esc(f.esperado)}</b>. Revisa la etiqueta.</li>`);
     if (f.estado === "no_leido") items.push(`<li class="w"><b>${esc(f.titulo)}</b>: no se pudo leer (debe ser ${esc(f.esperado)}). Escríbelo y vuelve a validar.</li>`);
   }
   $("#v-resultado").innerHTML = `<div class="banner ${r.estado}">${titulo}<small>${sub}</small></div>` +
-    (items.length ? `<ul class="lista-err">${items.join("")}</ul>` : "");
+    `<div class="grupos">${grupos}</div>` + (items.length ? `<ul class="lista-err">${items.join("")}</ul>` : "");
   for (const f of r.filas) {
     const fld = $(`#v-fld-${f.campo}`);
     if (!fld || f.estado === "info" || f.estado === "sin_referencia") continue;
-    fld.dataset.estado = f.estado;
+    fld.dataset.estado = f.estado === "dudoso" ? "no_leido" : f.estado;
     fld.querySelector(".nota").textContent =
       f.estado === "ok" ? `✔ correcto${f.nota ? " (" + f.nota + ")" : ""}` :
-      f.estado === "error" ? `✖ debe ser: ${f.esperado}` : `falta · debe ser: ${f.esperado}`;
+      f.estado === "error" ? `✖ debe ser: ${f.esperado}` :
+      f.estado === "dudoso" ? `⚠ dudoso · debe ser: ${f.esperado}` : `falta · debe ser: ${f.esperado}`;
   }
   $("#v-resultado").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function fotoValidar(archivo) {
   $("#v-resultado").innerHTML = "";
+  ultimoTexto = "";
   const r = await procesarFoto("v", archivo);
   if (!r) return;
   setForm("v", r.campos);
   $("#v-texto").textContent = r.texto;
+  ultimoTexto = r.texto;
   const resultado = await validar(true);
   guardarEtiquetaLeida(archivo, "validacion", r, resultado);
 }
@@ -385,7 +397,7 @@ function init() {
   for (const id of ["v-foto", "v-galeria"]) $(`#${id}`).onchange = (e) => { fotoValidar(e.target.files[0]); e.target.value = ""; };
   for (const id of ["r-foto", "r-galeria"]) $(`#${id}`).onchange = (e) => { fotoRegistrar(e.target.files[0]); e.target.value = ""; };
   $("#v-validar").onclick = () => validar(true);
-  $("#v-limpiar").onclick = () => { setForm("v", {}); $("#v-resultado").innerHTML = ""; $("#v-preview").hidden = true; $("#v-texto").textContent = ""; };
+  $("#v-limpiar").onclick = () => { setForm("v", {}); $("#v-resultado").innerHTML = ""; $("#v-preview").hidden = true; $("#v-texto").textContent = ""; ultimoTexto = ""; };
   $("#r-guardar").onclick = () => guardarProceso(false);
   $("#r-nuevo").onclick = () => { editId = null; setForm("r", {}); $("#r-mensaje").innerHTML = ""; $("#r-preview").hidden = true; modoRegistro(); };
   $("#r-copiar").onchange = (e) => { if (e.target.value) cargarEnRegistro(+e.target.value, true); e.target.value = ""; };

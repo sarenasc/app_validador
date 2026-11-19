@@ -148,13 +148,14 @@ def esperado(pid: int):
     if not p:
         raise HTTPException(404, "Proceso no encontrado")
     from validador.validacion import esperados
-    return {**p, **{k: v for k, (v, _) in esperados(p, {}).items()}}
+    return {**p, **{k: v for k, (v, _) in esperados(p, {})[0].items()}}
 
 
 # ---------------- validación ----------------
 @app.post("/api/validar")
 def validar_etiqueta(request: Request, payload: dict = Body(...)):
     leido = payload.get("leido") or {}
+    texto = payload.get("texto") or ""
     pid = payload.get("proceso_id")
     if pid:
         proceso = db.obtener_proceso(int(pid))
@@ -162,8 +163,8 @@ def validar_etiqueta(request: Request, payload: dict = Body(...)):
         proceso = db.buscar_proceso(norm_num(leido.get("proc")), norm_num(leido.get("lote")))
     por_coincidencia = None
     if proceso is None and not pid:
-        proceso, por_coincidencia = mejor_proceso(leido, db.listar_procesos(solo_activos=True))
-    resultado = validar(leido, proceso)
+        proceso, por_coincidencia = mejor_proceso(leido, db.listar_procesos(solo_activos=True), texto)
+    resultado = validar(leido, proceso, texto=texto)
     if por_coincidencia:
         resultado["avisos"].insert(0, f"PROC/LOTE no leídos con claridad: se identificó el proceso PROC {proceso['proc']}"
                                       f" / LOTE {proceso['lote']} en la base por coincidencia de {por_coincidencia}.")

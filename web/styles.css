@@ -83,3 +83,12 @@ td input { min-width: 90px; padding: 6px; font-size: 14px; margin: 0; }
 pre { white-space: pre-wrap; font-size: 12px; max-height: 300px; overflow: auto; }
 #toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: #1c2420; color: #fff; padding: 10px 16px;
   border-radius: 10px; z-index: 20; max-width: 90vw; }
+
+.grupos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.grupo { border-radius: 10px; padding: 8px 10px; border: 1px solid var(--borde); background: var(--tarjeta); }
+.grupo .ico { font-weight: 800; margin-right: 6px; }
+.grupo .clave { color: var(--suave); font-size: 13px; }
+.grupo small { display: block; font-size: 12px; color: var(--suave); }
+.grupo.ok { border-color: var(--ok); background: var(--ok-bg); } .grupo.ok .ico { color: var(--ok); }
+.grupo.error { border-color: var(--err); background: var(--err-bg); } .grupo.error .ico { color: var(--err); }
+.grupo.revisar { border-color: var(--warn); background: var(--warn-bg); } .grupo.revisar .ico { color: var(--warn); }

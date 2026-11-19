@@ -50,10 +50,33 @@ def test_campo_no_leido_queda_en_revisar():
 
 
 def test_sin_proceso_valida_contra_maestros():
-    r = validar({**LEIDO_OK, "proc": "99", "comuna": "X"}, db.buscar_proceso("99", "47"))
-    assert r["estado"] == "error"
-    # los datos del productor igual se comparan con el maestro
-    assert next(f for f in r["filas"] if f["campo"] == "ggn")["estado"] == "ok"
+    r = validar({**LEIDO_OK, "proc": "99"}, db.buscar_proceso("99", "47"))
+    # sin proceso registrado no es error: productor, planta y exportadora se validan contra los maestros
+    assert r["estado"] == "ok"
+    assert r["grupos"]["proceso"]["estado"] == "sin_proceso"
+    assert r["grupos"]["productor"]["estado"] == "ok"
+    r = validar({**LEIDO_OK, "proc": "99", "ggn": "1111111111111"}, None)
+    assert r["estado"] == "error" and r["grupos"]["productor"]["estado"] == "error"
+
+
+def test_productor_de_la_etiqueta_se_valida_con_su_maestro():
+    # otra etiqueta con otro productor: sus datos se validan contra SU maestro, y el CSG no corresponde al proceso
+    db.guardar("productor", {"csg": "200100", "region": "7", "provincia": "CURICO", "comuna": "TENO",
+                             "ggn": "4060000000001"})
+    db.guardar("sdp", {"csg": "200100", "sdp": "60001"})
+    leido = {**LEIDO_OK, "csg": "200100", "prod_region": "7", "prod_provincia": "CURICO", "prod_comuna": "TENO",
+             "ggn": "4060000000001", "sdp": "60001"}
+    r = validar(leido, proceso())
+    assert [f["campo"] for f in r["filas"] if f["estado"] == "error"] == ["csg", "sdp"]
+    assert r["grupos"]["planta"]["estado"] == "ok"
+    r = validar(leido, None)
+    assert r["estado"] == "ok"
+
+
+def test_codigo_inexistente_es_error_del_grupo():
+    r = validar({**LEIDO_OK, "csp": "999999"}, None)
+    assert r["grupos"]["planta"]["estado"] == "error"
+    assert any("999999" in a for a in r["avisos"])
 
 
 def test_sdp_y_variedad_fuera_de_maestro():
@@ -69,6 +92,38 @@ def test_identifica_proceso_sin_proc_leido():
     p, motivo = mejor_proceso(leido, db.listar_procesos(True))
     assert p["proc"] == "16" and "Lote" in motivo
     assert mejor_proceso({"lote": "47"}, db.listar_procesos(True)) == (None, None)
+
+
+# Texto OCR real de una foto de celular (borrosa, con fondo): el parser separa pocos campos
+TEXTO_CELULAR = """CcNICO
+ILE - PPRODUCTO DE CHILE - PR
+AMELIA ae
+| PACKED BY / EMBALAD
+CSG 155440 sds Le 072
+4089453112834 FDA 1542 2646254
+CoC :4069453462915
+PROC: 16
++ 12.12 1b - NT [paces TPO2PG
+LOTE: 47
+ie CSE 89366
+« SDP50741 yi |
+----- 2a lectura -----
+APRICOT DAMASCO 6 /CACHAPOAL /PICHIDEGUA
+CSP:171972 EXPORTADORA AGUA SANTA S
+CAT 1"""
+
+
+def test_busca_valores_de_la_base_en_el_texto():
+    leido = {"variedad": "AMELIA", "categoria": "CAT 1", "sdp": "50741", "csg": "155440", "proc": "16", "lote": "47"}
+    r = validar(leido, proceso(), texto=TEXTO_CELULAR)
+    est = {f["campo"]: f["estado"] for f in r["filas"]}
+    for c in ("especie", "csp", "cse", "coc", "exportadora", "prod_provincia", "prod_comuna", "prod_region"):
+        assert est[c] == "ok", c
+    assert est["ggn"] == "dudoso"  # se leyó 4089... en vez de 4069...: no se da por bueno
+    assert est["fda"] == "ok"  # "1542 2646254": el espacio del OCR no importa
+    # el proceso también se identifica sin PROC/LOTE separados, buscándolos en el texto
+    p, _ = mejor_proceso({}, db.listar_procesos(True), TEXTO_CELULAR)
+    assert p and p["lote"] == "47"
 
 
 def test_tolerancias_ocr():

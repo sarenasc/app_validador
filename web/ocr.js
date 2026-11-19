@@ -91,9 +91,10 @@ const OCR = (() => {
     r.variedad = buscarEnCatalogo(tc, vars.map((f) => ({ valor: f.variedad, alias: [f.variedad] })));
     r.exportadora = buscarEnCatalogo(tc, filas("exportadora").map((f) => ({ valor: f.nombre, alias: [f.nombre] })));
     if (!r.exportadora && (m = t.match(/(EXPORTADORA\s+[A-Z][A-Z .&]{3,40})/))) r.exportadora = m[1].trim();
-    const tc0 = tc.replace(/O/g, "0");
+    const canon = (x) => x.replace(/[OQDIL|SBZG]/g, (c) => ({ ...MAPA, Z: "2", G: "6" })[c]); // O/0, S/5, I/1, B/8...
+    const tc0 = canon(tc);
     for (const f of filas("embalaje")) {
-      if (tc0.includes(compacto(f.codigo).replace(/O/g, "0"))) { r.embalaje = f.codigo; break; }
+      if (tc0.includes(canon(compacto(f.codigo)))) { r.embalaje = f.codigo; break; }
     }
     if (!r.embalaje && (m = t.match(/EMBALAJE[^A-Z0-9]{0,10}(?:[A-Z ]{0,20}\n)?\s*([A-Z]{2,4}[0-9O]{2,4}[A-Z0-9]{3,12})/))) r.embalaje = m[1];
     if (!r.embalaje && (m = t.match(/\b([A-Z]{2,4}[0-9O]{2,4}[A-Z]{1,3}[0-9O]{1,3}[A-Z]{1,4})\b/))) r.embalaje = m[1];
@@ -105,16 +106,63 @@ const OCR = (() => {
     return r;
   }
 
-  /** Escala, pasa a gris y estira el contraste. Devuelve un canvas. */
+  /** Busca el rectángulo claro de la etiqueta (fondo oscuro alrededor). Devuelve {x,y,w,h} en px de la imagen o null. */
+  function ubicarEtiqueta(img) {
+    const esc = Math.min(1, 500 / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * esc)), h = Math.max(1, Math.round(img.height * esc));
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, w, h);
+    const p = ctx.getImageData(0, 0, w, h).data, g = new Uint8Array(w * h), hist = new Uint32Array(256);
+    for (let i = 0; i < w * h; i++) { g[i] = (p[i * 4] * 0.299 + p[i * 4 + 1] * 0.587 + p[i * 4 + 2] * 0.114) | 0; hist[g[i]]++; }
+    // umbral de Otsu
+    let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+    let sB = 0, wB = 0, mejor = 0, t = 128;
+    for (let i = 0; i < 256; i++) {
+      wB += hist[i]; if (!wB) continue; const wF = w * h - wB; if (!wF) break;
+      sB += i * hist[i]; const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) ** 2;
+      if (v > mejor) { mejor = v; t = i; }
+    }
+    const tramo = (perfil, largo, umbral) => {  // tramo más largo sobre el umbral, tolerando huecos cortos
+      let best = [0, -1], ini = -1, hueco = 0;
+      const gapMax = Math.round(largo * 0.04);
+      for (let i = 0; i <= largo; i++) {
+        if (i < largo && perfil[i] > umbral) { if (ini < 0) ini = i; hueco = 0; continue; }
+        if (ini < 0) continue;
+        hueco++;
+        if (hueco > gapMax || i === largo) {
+          const fin = i - hueco;
+          if (fin - ini > best[1] - best[0]) best = [ini, fin];
+          ini = -1; hueco = 0;
+        }
+      }
+      return best;
+    };
+    const filas = new Float32Array(h), cols = new Float32Array(w);
+    for (let y = 0; y < h; y++) { let n = 0; for (let x = 0; x < w; x++) n += g[y * w + x] > t; filas[y] = n / w; }
+    const [y0, y1] = tramo(filas, h, 0.35);
+    if (y1 <= y0) return null;
+    for (let x = 0; x < w; x++) { let n = 0; for (let y = y0; y <= y1; y++) n += g[y * w + x] > t; cols[x] = n / (y1 - y0 + 1); }
+    const [x0, x1] = tramo(cols, w, 0.35);
+    const area = ((x1 - x0) * (y1 - y0)) / (w * h);
+    if (x1 <= x0 || area < 0.08 || area > 0.92) return null;  // sin recorte claro: se usa la foto completa
+    const m = 0.02 * Math.max(w, h);
+    const X0 = Math.max(0, x0 - m), Y0 = Math.max(0, y0 - m), X1 = Math.min(w, x1 + m), Y1 = Math.min(h, y1 + m);
+    return { x: X0 / esc, y: Y0 / esc, w: (X1 - X0) / esc, h: (Y1 - Y0) / esc };
+  }
+
+  /** Recorta la etiqueta, la amplía (lado mayor ~2400 px), pasa a gris y estira el contraste. Devuelve un canvas. */
   function preprocesar(archivo) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
-        const max = 2400, esc = Math.min(1, max / Math.max(img.width, img.height)) * (Math.max(img.width, img.height) < 1400 ? 1.8 : 1);
+        const r = ubicarEtiqueta(img) || { x: 0, y: 0, w: img.width, h: img.height };
+        const esc = Math.min(2.5, 2400 / Math.max(r.w, r.h));
         const c = document.createElement("canvas");
-        c.width = Math.round(img.width * esc); c.height = Math.round(img.height * esc);
+        c.width = Math.round(r.w * esc); c.height = Math.round(r.h * esc);
         const ctx = c.getContext("2d", { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0, c.width, c.height);
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
         const d = ctx.getImageData(0, 0, c.width, c.height), p = d.data;
         const hist = new Uint32Array(256);
         for (let i = 0; i < p.length; i += 4) {
@@ -154,22 +202,61 @@ const OCR = (() => {
   const CLAVES = ["csg", "csp", "cse", "ggn", "fda", "coc", "proc", "lote", "sdp", "embalaje", "fecha", "variedad",
     "especie", "exportadora", "peso_kg", "peso_lb", "plu", "categoria", "prod_comuna", "planta_comuna"];
 
-  /** Lee la foto y devuelve {campos, texto}. Si faltan campos hace una 2ª pasada (texto disperso) y une ambos textos. */
-  async function leer(archivo, catalogo, progreso) {
-    const canvas = await preprocesar(archivo);
-    const w = await obtenerWorker(progreso);
-    await w.setParameters({ tessedit_pageseg_mode: "3" });
-    let { data } = await w.recognize(canvas, { rotateAuto: true });
-    let texto = data.text;
-    let campos = parsear(texto, catalogo);
-    if (CLAVES.some((k) => !campos[k])) {
-      progreso && progreso("Segunda lectura para completar campos…", 0);
-      await w.setParameters({ tessedit_pageseg_mode: "11" });
-      ({ data } = await w.recognize(canvas, { rotateAuto: true }));
-      texto += "\n----- 2ª lectura -----\n" + data.text;
-      campos = { ...parsear(data.text, catalogo), ...parsear(texto, catalogo) };
+  /** Blanco y negro adaptativo (umbral local de Bradley): ayuda con sombras y etiquetas arrugadas. */
+  function binarizar(src) {
+    const w = src.width, h = src.height;
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(src, 0, 0);
+    const d = ctx.getImageData(0, 0, w, h), p = d.data, W = w + 1;
+    const integ = new Float64Array(W * (h + 1));
+    for (let y = 1; y <= h; y++) {
+      let fila = 0;
+      for (let x = 1; x <= w; x++) { fila += p[((y - 1) * w + x - 1) * 4]; integ[y * W + x] = integ[(y - 1) * W + x] + fila; }
     }
-    return { campos, texto };
+    const r = Math.max(8, Math.round(w / 40));
+    for (let y = 0; y < h; y++) {
+      const ya = Math.max(0, y - r), yb = Math.min(h, y + r + 1);
+      for (let x = 0; x < w; x++) {
+        const xa = Math.max(0, x - r), xb = Math.min(w, x + r + 1);
+        const s = integ[yb * W + xb] - integ[ya * W + xb] - integ[yb * W + xa] + integ[ya * W + xa];
+        const i = (y * w + x) * 4, v = p[i] * (xb - xa) * (yb - ya) < s * 0.85 ? 0 : 255;
+        p[i] = p[i + 1] = p[i + 2] = v;
+      }
+    }
+    ctx.putImageData(d, 0, 0);
+    return c;
+  }
+
+  /** Por cada campo elige el valor que más se repite entre las lecturas (a igualdad, el de la primera). */
+  function votar(lecturas) {
+    const out = {};
+    for (const k of new Set(lecturas.flatMap((l) => Object.keys(l)))) {
+      const cuenta = new Map();
+      for (const l of lecturas) if (l[k]) cuenta.set(l[k], (cuenta.get(l[k]) || 0) + 1);
+      let mejor = null, n = 0;
+      for (const [v, c] of cuenta) if (c > n) { mejor = v; n = c; }
+      if (mejor) out[k] = mejor;
+    }
+    return out;
+  }
+
+  /** Lee la foto: hasta 3 pasadas (gris por bloques, blanco y negro disperso, gris disperso) y vota los campos. */
+  async function leer(archivo, catalogo, progreso) {
+    const gris = await preprocesar(archivo);
+    const w = await obtenerWorker(progreso);
+    const pasadas = [["3", false, "1ª lectura"], ["11", true, "2ª lectura (blanco y negro)"], ["11", false, "3ª lectura"]];
+    const textos = [], lecturas = [];
+    const combinar = () => ({ ...parsear(textos.join("\n"), catalogo), ...votar(lecturas) });
+    for (const [psm, bn, nombre] of pasadas) {
+      if (lecturas.length && CLAVES.every((k) => combinar()[k])) break;
+      progreso && progreso(`${nombre}…`, 0);
+      await w.setParameters({ tessedit_pageseg_mode: psm });
+      const { data } = await w.recognize(bn ? binarizar(gris) : gris, { rotateAuto: true });
+      textos.push(`----- ${nombre} -----\n${data.text}`);
+      lecturas.push(parsear(data.text, catalogo));
+    }
+    return { campos: combinar(), texto: textos.join("\n") };
   }
 
   return { leer, parsear, fixNum, setFormatoFecha: (f) => { formatoFecha = f; try { localStorage.setItem("formatoFecha", f); } catch (e) { /* */ } }, getFormatoFecha: () => formatoFecha };
