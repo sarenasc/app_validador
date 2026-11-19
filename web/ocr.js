@@ -259,7 +259,7 @@ const OCR = (() => {
     return { campos: combinar(), texto: textos.join("\n") };
   }
 
-  return { leer, parsear, fixNum, setFormatoFecha: (f) => { formatoFecha = f; try { localStorage.setItem("formatoFecha", f); } catch (e) { /* */ } }, getFormatoFecha: () => formatoFecha };
+  return { leer, parsear, votar, fixNum, setFormatoFecha: (f) => { formatoFecha = f; try { localStorage.setItem("formatoFecha", f); } catch (e) { /* */ } }, getFormatoFecha: () => formatoFecha };
 })();
 
 if (typeof module !== "undefined") module.exports = OCR;

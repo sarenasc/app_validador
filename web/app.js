@@ -25,6 +25,7 @@ const AUTOCOMPLETAR = {
 let maestros = {};
 let procesos = [];
 let editId = null;
+let lecturasV = []; // lecturas de las fotos de la etiqueta que se está validando
 let ultimoTexto = ""; // texto OCR de la última foto: el servidor busca en él los valores de la base
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -129,13 +130,13 @@ function autocompletar(prefijo, campoClave, { forzar = false } = {}) {
 }
 
 // ---------------- foto + OCR ----------------
-async function procesarFoto(prefijo, archivo) {
+async function procesarFoto(prefijo, archivo, etiquetaProgreso = "") {
   if (!archivo) return null;
   const prev = $(`#${prefijo}-preview`);
   prev.src = URL.createObjectURL(archivo); prev.hidden = false;
   const barra = $(`#${prefijo}-progreso`);
   barra.hidden = false;
-  const progreso = (txt, p) => { barra.querySelector("span").textContent = `${txt} ${p ? Math.round(p * 100) + "%" : ""}`;
+  const progreso = (txt, p) => { barra.querySelector("span").textContent = `${etiquetaProgreso}${txt} ${p ? Math.round(p * 100) + "%" : ""}`;
     barra.querySelector("div").style.width = `${Math.round((p || 0) * 100)}%`; };
   try {
     if (typeof Tesseract === "undefined") throw new Error("No se pudo cargar el motor OCR (revisa la conexión a internet). Ingresa los datos a mano.");
@@ -232,16 +233,38 @@ function mostrarResultado(r) {
   $("#v-resultado").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-async function fotoValidar(archivo) {
+/**
+ * Lee una o varias fotos de la MISMA etiqueta. Con `agregar` se suman a las ya leídas: los campos se votan
+ * entre fotos y el servidor busca los valores de la base en el texto de todas, así lo que no se lee en una
+ * se toma de otra.
+ */
+async function fotoValidar(archivos, agregar = false) {
+  archivos = [...archivos].filter(Boolean);
+  if (!archivos.length) return;
+  if (!agregar) { lecturasV = []; $("#v-miniaturas").innerHTML = ""; }
   $("#v-resultado").innerHTML = "";
-  ultimoTexto = "";
-  const r = await procesarFoto("v", archivo);
-  if (!r) return;
-  setForm("v", r.campos);
-  $("#v-texto").textContent = r.texto;
-  ultimoTexto = r.texto;
+  const nuevas = [];
+  for (const [i, archivo] of archivos.entries()) {
+    const r = await procesarFoto("v", archivo, archivos.length > 1 ? `Foto ${i + 1} de ${archivos.length} · ` : "");
+    if (!r) continue;
+    const l = { ...r, archivo };
+    lecturasV.push(l); nuevas.push(l);
+    $("#v-miniaturas").insertAdjacentHTML("beforeend", `<img alt="" src="${URL.createObjectURL(archivo)}">`);
+  }
+  if (!lecturasV.length) return;
+  setForm("v", OCR.votar(lecturasV.map((l) => l.campos)));
+  ultimoTexto = lecturasV.map((l, i) => `===== FOTO ${i + 1} =====\n${l.texto}`).join("\n");
+  $("#v-texto").textContent = ultimoTexto;
+  $("#v-mas").hidden = false;
+  $("#v-nfotos").textContent = lecturasV.length > 1 ? `${lecturasV.length} fotos de esta etiqueta combinadas.` : "1 foto leída.";
   const resultado = await validar(true);
-  guardarEtiquetaLeida(archivo, "validacion", r, resultado);
+  for (const l of nuevas) guardarEtiquetaLeida(l.archivo, "validacion", l, resultado);
+}
+
+function limpiarValidacion() {
+  setForm("v", {}); lecturasV = []; ultimoTexto = "";
+  $("#v-resultado").innerHTML = ""; $("#v-preview").hidden = true; $("#v-texto").textContent = "";
+  $("#v-miniaturas").innerHTML = ""; $("#v-mas").hidden = true;
 }
 
 // ---------------- REGISTRAR ----------------
@@ -394,10 +417,11 @@ function init() {
   renderForm("r", true);
   document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => irA(b.dataset.tab)));
 
-  for (const id of ["v-foto", "v-galeria"]) $(`#${id}`).onchange = (e) => { fotoValidar(e.target.files[0]); e.target.value = ""; };
+  for (const id of ["v-foto", "v-galeria"]) $(`#${id}`).onchange = (e) => { fotoValidar(e.target.files); e.target.value = ""; };
+  $("#v-otra").onchange = (e) => { fotoValidar(e.target.files, true); e.target.value = ""; };
   for (const id of ["r-foto", "r-galeria"]) $(`#${id}`).onchange = (e) => { fotoRegistrar(e.target.files[0]); e.target.value = ""; };
   $("#v-validar").onclick = () => validar(true);
-  $("#v-limpiar").onclick = () => { setForm("v", {}); $("#v-resultado").innerHTML = ""; $("#v-preview").hidden = true; $("#v-texto").textContent = ""; ultimoTexto = ""; };
+  $("#v-limpiar").onclick = limpiarValidacion;
   $("#r-guardar").onclick = () => guardarProceso(false);
   $("#r-nuevo").onclick = () => { editId = null; setForm("r", {}); $("#r-mensaje").innerHTML = ""; $("#r-preview").hidden = true; modoRegistro(); };
   $("#r-copiar").onchange = (e) => { if (e.target.value) cargarEnRegistro(+e.target.value, true); e.target.value = ""; };

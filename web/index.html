@@ -31,12 +31,19 @@
           <input type="file" accept="image/*" capture="environment" id="v-foto" hidden>
         </label>
         <label class="btn grande">🖼 Galería
-          <input type="file" accept="image/*" id="v-galeria" hidden>
+          <input type="file" accept="image/*" id="v-galeria" multiple hidden>
         </label>
       </div>
-      <p class="ayuda">Acércate hasta que la etiqueta llene la pantalla (mejor con el teléfono horizontal), <b>toca la etiqueta para enfocar</b> y espera que se vea nítida, con buena luz y sin reflejos. También puedes escribir los datos abajo y presionar <b>Validar</b>.</p>
+      <p class="ayuda">Acércate hasta que la etiqueta llene la pantalla (mejor con el teléfono horizontal), <b>toca la etiqueta para enfocar</b> y espera que se vea nítida, con buena luz y sin reflejos. Si algún dato no se lee, agrega otra foto de la <b>misma etiqueta</b> (puedes elegir varias en Galería): se completa con lo que se lea en cualquiera. También puedes escribir los datos abajo y presionar <b>Validar</b>.</p>
+      <div id="v-mas" hidden>
+        <label class="btn grande">➕ Agregar otra foto de esta etiqueta
+          <input type="file" accept="image/*" capture="environment" id="v-otra" hidden>
+        </label>
+        <p class="ayuda" id="v-nfotos"></p>
+      </div>
       <div id="v-progreso" class="progreso" hidden><div></div><span></span></div>
       <img id="v-preview" class="preview" alt="" hidden>
+      <div id="v-miniaturas" class="miniaturas"></div>
     </div>
 
     <div id="v-resultado"></div>

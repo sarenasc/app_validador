@@ -34,6 +34,8 @@ select, input, textarea { width: 100%; font-size: 16px; padding: 9px 10px; borde
   background: var(--tarjeta); color: var(--texto); margin-top: 3px; }
 textarea { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 input[type=checkbox] { width: auto; }
+.miniaturas { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.miniaturas img { height: 56px; border-radius: 6px; border: 1px solid var(--borde); }
 .preview { max-width: 100%; max-height: 260px; border-radius: 8px; display: block; margin: 8px auto 0; }
 .progreso { position: relative; height: 26px; background: var(--borde); border-radius: 8px; overflow: hidden; margin: 8px 0; }
 .progreso div { height: 100%; width: 0; background: var(--primario); transition: width .2s; }
