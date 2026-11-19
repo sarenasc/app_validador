@@ -4,10 +4,13 @@ Ejecutar:  python servidor.py          (solo este PC: http://localhost:8520)
            python servidor.py --red    (accesible desde celulares de la red: http://<IP-del-PC>:8520)
 """
 
+import base64
+import json
 import socket
 import sys
 import webbrowser
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, Request
@@ -15,10 +18,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from validador import datos_ejemplo, db
-from validador.validacion import norm_num, norm_texto, validar
+from validador.validacion import mejor_proceso, norm_num, norm_texto, validar
 
 RAIZ = Path(__file__).parent
 WEB = RAIZ / "web"
+ETIQUETAS = RAIZ / "etiquetas_leidas"  # fotos leídas con su texto OCR y resultado (para revisar lecturas)
 PUERTO = 8520
 
 
@@ -156,11 +160,43 @@ def validar_etiqueta(request: Request, payload: dict = Body(...)):
         proceso = db.obtener_proceso(int(pid))
     else:
         proceso = db.buscar_proceso(norm_num(leido.get("proc")), norm_num(leido.get("lote")))
+    por_coincidencia = None
+    if proceso is None and not pid:
+        proceso, por_coincidencia = mejor_proceso(leido, db.listar_procesos(solo_activos=True))
     resultado = validar(leido, proceso)
+    if por_coincidencia:
+        resultado["avisos"].insert(0, f"PROC/LOTE no leídos con claridad: se identificó el proceso PROC {proceso['proc']}"
+                                      f" / LOTE {proceso['lote']} en la base por coincidencia de {por_coincidencia}.")
     if payload.get("guardar", True):
         disp = request.headers.get("user-agent", "")[:120]
         resultado["id_historial"] = db.registrar_validacion(resultado, disp)
     return resultado
+
+
+@app.post("/api/etiquetas")
+def guardar_etiqueta(payload: dict = Body(...)):
+    """Guarda la foto leída + texto OCR + campos (+ resultado) en etiquetas_leidas/AAAA-MM-DD/."""
+    imagen = payload.get("imagen") or ""
+    if "," not in imagen:
+        raise HTTPException(400, "Falta la imagen")
+    ahora = datetime.now()
+    carpeta = ETIQUETAS / ahora.strftime("%Y-%m-%d")
+    carpeta.mkdir(parents=True, exist_ok=True)
+    modo = "registro" if payload.get("modo") == "registro" else "validacion"
+    nombre = f"{ahora.strftime('%H%M%S')}_{modo}"
+    campos = payload.get("campos") or {}
+    if campos.get("proc") or campos.get("lote"):
+        nombre += f"_P{norm_num(campos.get('proc')) or 'x'}_L{norm_num(campos.get('lote')) or 'x'}"
+    n, base = 1, nombre
+    while (carpeta / f"{nombre}.jpg").exists():
+        n += 1
+        nombre = f"{base}_{n}"
+    (carpeta / f"{nombre}.jpg").write_bytes(base64.b64decode(imagen.split(",", 1)[1]))
+    detalle = {"fecha_hora": ahora.isoformat(timespec="seconds"), "modo": modo, "campos": campos,
+               "texto_ocr": payload.get("texto") or "", "resultado": payload.get("resultado")}
+    (carpeta / f"{nombre}.json").write_text(json.dumps(detalle, ensure_ascii=False, indent=2), encoding="utf-8")
+    (carpeta / f"{nombre}.txt").write_text(detalle["texto_ocr"], encoding="utf-8")
+    return {"archivo": f"{carpeta.name}/{nombre}.jpg"}
 
 
 @app.get("/api/historial")

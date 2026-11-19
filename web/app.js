@@ -165,7 +165,35 @@ async function validar(guardar = true) {
   try {
     const r = await api("/api/validar", { method: "POST", body: { leido, proceso_id: $("#v-proceso").value || null, guardar } });
     mostrarResultado(r);
-  } catch (e) { toast("Error: " + e.message, 5000); }
+    return r;
+  } catch (e) { toast("Error: " + e.message, 5000); return null; }
+}
+
+/** Foto original reducida a JPEG (máx. 2000 px) en dataURL. */
+function aJpeg(archivo) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const esc = Math.min(1, 2000 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * esc); c.height = Math.round(img.height * esc);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      resolve(c.toDataURL("image/jpeg", 0.9));
+    };
+    img.onerror = () => reject(new Error("No se pudo abrir la imagen"));
+    img.src = URL.createObjectURL(archivo);
+  });
+}
+
+/** Guarda la foto, el texto OCR, los campos leídos y el resultado en la carpeta etiquetas_leidas del servidor. */
+async function guardarEtiquetaLeida(archivo, modo, lectura, resultado) {
+  try {
+    const res = resultado && { estado: resultado.estado, n_errores: resultado.n_errores, avisos: resultado.avisos,
+      errores: resultado.filas.filter((f) => f.estado !== "ok" && f.estado !== "info" && f.estado !== "sin_referencia") };
+    await api("/api/etiquetas", { method: "POST", body: { modo, imagen: await aJpeg(archivo), texto: lectura.texto,
+      campos: lectura.campos, resultado: res } });
+  } catch (e) { console.warn("No se guardó la etiqueta leída:", e.message); }
 }
 
 function mostrarResultado(r) {
@@ -200,7 +228,8 @@ async function fotoValidar(archivo) {
   if (!r) return;
   setForm("v", r.campos);
   $("#v-texto").textContent = r.texto;
-  await validar(true);
+  const resultado = await validar(true);
+  guardarEtiquetaLeida(archivo, "validacion", r, resultado);
 }
 
 // ---------------- REGISTRAR ----------------
@@ -213,6 +242,7 @@ function modoRegistro() {
 async function fotoRegistrar(archivo) {
   const r = await procesarFoto("r", archivo);
   if (!r) return;
+  guardarEtiquetaLeida(archivo, "registro", r, null);
   setForm("r", r.campos, { limpiar: false });
   for (const k of Object.keys(AUTOCOMPLETAR)) if ($(`#r-${k}`).value) autocompletar("r", k);
   const faltan = SECCIONES.flatMap((s) => s.campos).filter(([k, , t]) => t !== "solo-registro" && k !== "calibre" && !$(`#r-${k}`).value).map((c) => c[1]);

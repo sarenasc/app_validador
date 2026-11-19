@@ -1,7 +1,7 @@
 import pytest
 
 from validador import datos_ejemplo, db
-from validador.validacion import comparar, norm_num, validar
+from validador.validacion import comparar, mejor_proceso, norm_num, validar
 
 LEIDO_OK = {
     "especie": "DAMASCO", "variedad": "AMELIA", "csg": "155440", "prod_region": "6", "prod_provincia": "CACHAPOAL",
@@ -61,6 +61,14 @@ def test_sdp_y_variedad_fuera_de_maestro():
     assert r["estado"] == "error"
     assert any("SDP 11111" in a for a in r["avisos"])
     assert any("OTRA" in a for a in r["avisos"])
+
+
+def test_identifica_proceso_sin_proc_leido():
+    # caso real: el OCR no leyó PROC pero sí lote, SDP, CSP, variedad y categoría
+    leido = {"variedad": "AMELIA", "categoria": "CAT 1", "sdp": "50741", "csp": "171972", "lote": "47"}
+    p, motivo = mejor_proceso(leido, db.listar_procesos(True))
+    assert p["proc"] == "16" and "Lote" in motivo
+    assert mejor_proceso({"lote": "47"}, db.listar_procesos(True)) == (None, None)
 
 
 def test_tolerancias_ocr():

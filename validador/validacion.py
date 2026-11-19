@@ -151,6 +151,27 @@ def esperados(proceso, leido, obtener=db.obtener):
     return esp
 
 
+CAMPOS_IDENTIFICAN = ("proc", "lote", "csg", "sdp", "csp", "cse", "embalaje", "variedad", "fecha", "categoria", "plu")
+
+
+def mejor_proceso(leido, procesos):
+    """Busca entre los procesos de la base el que más coincide con lo leído.
+
+    Devuelve (proceso, texto con los campos coincidentes) o (None, None) si no hay uno claro:
+    se exigen al menos 3 coincidencias y que no haya empate con otro proceso.
+    """
+    puntajes = []
+    for p in procesos:
+        iguales = [c for c in CAMPOS_IDENTIFICAN
+                   if leido.get(c) and p.get(c) and comparar(CAMPOS[c][1], leido[c], p[c])[0]]
+        puntajes.append((len(iguales), iguales, p))
+    puntajes.sort(key=lambda x: -x[0])
+    if not puntajes or puntajes[0][0] < 3 or (len(puntajes) > 1 and puntajes[1][0] == puntajes[0][0]):
+        return None, None
+    n, iguales, p = puntajes[0]
+    return p, ", ".join(CAMPOS[c][0] for c in iguales)
+
+
 def validar(leido, proceso=None, obtener=db.obtener):
     leido = {k: (str(v).strip() if v not in (None, "") else "") for k, v in (leido or {}).items()}
     esp = esperados(proceso, leido, obtener)
